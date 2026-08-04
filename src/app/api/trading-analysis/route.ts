@@ -1,5 +1,157 @@
 import { NextResponse } from "next/server";
 
+interface EconomicEvent {
+  name: string;
+  date: string;
+  time: string;
+  impact: "HIGH" | "MEDIUM" | "LOW";
+  currencies: string[];
+  description: string;
+  typicalReaction: string;
+}
+
+function getUpcomingEvents(): EconomicEvent[] {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const events: EconomicEvent[] = [];
+
+  const nfpDate = new Date(year, month, 1);
+  while (nfpDate.getDay() !== 5) nfpDate.setDate(nfpDate.getDate() + 1);
+  if (nfpDate < now) nfpDate.setMonth(nfpDate.getMonth() + 1);
+  while (nfpDate.getDay() !== 5) nfpDate.setDate(nfpDate.getDate() + 1);
+
+  const fomcDates = [
+    new Date(year, 0, 29), new Date(year, 2, 19), new Date(year, 4, 7),
+    new Date(year, 5, 18), new Date(year, 7, 20), new Date(year, 9, 29),
+    new Date(year, 11, 11),
+  ];
+
+  const cpiDate = new Date(year, month, 10);
+  if (cpiDate < now) cpiDate.setMonth(cpiDate.getMonth() + 1);
+
+  const ecbDates = [new Date(year, month, 30)];
+  if (ecbDates[0] < now) ecbDates[0].setMonth(ecbDates[0].getMonth() + 1);
+
+  events.push({
+    name: "NFP (Non-Farm Payrolls)",
+    date: nfpDate.toISOString().split("T")[0],
+    time: "13:30 UTC",
+    impact: "HIGH",
+    currencies: ["USD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD"],
+    description: "US job market health. Big moves on gold, USD pairs, indices.",
+    typicalReaction: "Strong NFP = USD up, Gold down. Weak NFP = USD down, Gold up.",
+  });
+
+  for (const d of fomcDates) {
+    if (d >= now) {
+      events.push({
+        name: "FOMC Interest Rate Decision",
+        date: d.toISOString().split("T")[0],
+        time: "18:00 UTC",
+        impact: "HIGH",
+        currencies: ["USD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTC", "ETH"],
+        description: "Fed rate decision. Biggest market mover.",
+        typicalReaction: "Rate hike = USD up, Risk assets down. Rate cut = USD up, Risk assets up.",
+      });
+      break;
+    }
+  }
+
+  events.push({
+    name: "CPI (Consumer Price Index)",
+    date: cpiDate.toISOString().split("T")[0],
+    time: "12:30 UTC",
+    impact: "HIGH",
+    currencies: ["USD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY"],
+    description: "Inflation data. Drives Fed policy expectations.",
+    typicalReaction: "High CPI = USD up, Gold volatile. Low CPI = USD down.",
+  });
+
+  for (const d of ecbDates) {
+    if (d >= now) {
+      events.push({
+        name: "ECB Interest Rate Decision",
+        date: d.toISOString().split("T")[0],
+        time: "12:15 UTC",
+        impact: "HIGH",
+        currencies: ["EUR", "EURUSD", "GBPUSD"],
+        description: "European Central Bank rate decision.",
+        typicalReaction: "ECB hike = EUR up. ECB cut = EUR down.",
+      });
+      break;
+    }
+  }
+
+  events.push({
+    name: "US GDP (Advance)",
+    date: new Date(year, month, 25).toISOString().split("T")[0],
+    time: "12:30 UTC",
+    impact: "MEDIUM",
+    currencies: ["USD", "XAUUSD", "SPX500", "NASDAQ"],
+    description: "US economic growth measure.",
+    typicalReaction: "Strong GDP = USD up, stocks up. Weak = USD down.",
+  });
+
+  events.push({
+    name: "US Retail Sales",
+    date: new Date(year, month, 15).toISOString().split("T")[0],
+    time: "12:30 UTC",
+    impact: "MEDIUM",
+    currencies: ["USD", "XAUUSD", "SPX500"],
+    description: "Consumer spending indicator.",
+    typicalReaction: "Strong = USD up. Weak = USD down.",
+  });
+
+  return events;
+}
+
+function checkEventProximity(symbol: string, category: string): { warnings: string[]; advice: string; eventRisk: "HIGH" | "MEDIUM" | "LOW" } {
+  const now = new Date();
+  const events = getUpcomingEvents();
+  const warnings: string[] = [];
+  let eventRisk: "HIGH" | "MEDIUM" | "LOW" = "LOW";
+  let advice = "";
+
+  const symbolUpper = symbol.toUpperCase();
+  const relevantEvents = events.filter(e => {
+    if (e.currencies.some(c => symbolUpper.includes(c))) return true;
+    if (category === "crypto" && ["BTC", "ETH", "SOL"].some(c => symbolUpper.includes(c))) return true;
+    if (category === "commodity" && ["XAUUSD", "XAGUSD"].some(c => symbolUpper.includes(c))) return true;
+    return false;
+  });
+
+  for (const event of relevantEvents) {
+    const eventDate = new Date(event.date + "T" + event.time.replace(" UTC", ":00Z"));
+    const diffMs = eventDate.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    if (diffDays < 0) continue;
+
+    if (diffHours <= 2) {
+      warnings.push(`⚠️ ${event.name} in ${Math.round(diffHours * 60)} MINUTES!`);
+      eventRisk = "HIGH";
+      advice = `DO NOT TRADE — ${event.name} releasing soon. Extreme volatility expected. Wait 15-30 min after release.`;
+    } else if (diffHours <= 24) {
+      warnings.push(`⚠️ ${event.name} TODAY at ${event.time}`);
+      eventRisk = "HIGH";
+      advice = `CAUTION — ${event.name} today. Reduce position size to 0.5% risk. Expect ${diffHours < 6 ? "sharp" : "moderate"} moves on ${symbol}.`;
+    } else if (diffDays <= 2) {
+      warnings.push(`📅 ${event.name} in ${Math.round(diffDays)} day(s) — ${event.date}`);
+      eventRisk = eventRisk === "HIGH" ? "HIGH" : "MEDIUM";
+      advice = `APPROACHING — ${event.name} in ${Math.round(diffDays)} days. Consider: (1) Tighten stops, (2) Reduce lot size, (3) Don't open new positions day before.`;
+    } else if (diffDays <= 5) {
+      warnings.push(`📅 ${event.name} on ${event.date} (${Math.round(diffDays)} days)`);
+      if (eventRisk !== "HIGH") eventRisk = "MEDIUM";
+      advice = `UPCOMING — ${event.name} in ${Math.round(diffDays)} days. Plan your trades around it. ${event.typicalReaction}`;
+    }
+  }
+
+  return { warnings, advice, eventRisk };
+}
+
 function calculateTrendScore(indicators: Record<string, unknown>, changePercent: number, volume: number): { score: number; breakdown: Record<string, number>; label: string; color: string } {
   const rsi = (indicators.rsi as number) || 50;
   const macd = (indicators.macd as number) || 0;
@@ -107,7 +259,7 @@ async function fetchNews(symbol: string, category: string): Promise<{ headlines:
   }
 }
 
-function generateLocalAnalysis(instrumentData: Record<string, unknown>, indicators: Record<string, unknown>, question: string, news: { headlines: string[]; sentiment: string; sentimentScore: number } | null) {
+function generateLocalAnalysis(instrumentData: Record<string, unknown>, indicators: Record<string, unknown>, question: string, news: { headlines: string[]; sentiment: string; sentimentScore: number } | null, eventInfo: { warnings: string[]; advice: string; eventRisk: string }) {
   const price = (instrumentData.currentPrice as number) || 0;
   const change = (instrumentData.change as number) || 0;
   const changePercent = (instrumentData.changePercent as number) || 0;
@@ -130,7 +282,13 @@ function generateLocalAnalysis(instrumentData: Record<string, unknown>, indicato
 
   const trend = calculateTrendScore(indicators, changePercent, volume);
   const newsBoost = news ? Math.round(news.sentimentScore * 10) : 0;
-  const finalScore = Math.max(-100, Math.min(100, trend.score + newsBoost));
+  const eventPenalty = eventInfo.eventRisk === "HIGH" ? -15 : eventInfo.eventRisk === "MEDIUM" ? -5 : 0;
+  const finalScore = Math.max(-100, Math.min(100, trend.score + newsBoost + eventPenalty));
+
+  const eventSection = eventInfo.warnings.length > 0 ? `
+⚠️ ECONOMIC CALENDAR
+${eventInfo.warnings.map((w) => `  ${w}`).join("\n")}
+  ${eventInfo.advice}` : "";
 
   const newsSection = news ? `
 NEWS SENTIMENT: ${news.sentiment}
@@ -144,7 +302,7 @@ Score: ${finalScore}/100 ${renderScoreBar(finalScore)}
   MACD:       ${trend.breakdown.MACD >= 0 ? "+" : ""}${trend.breakdown.MACD}
   Trend:      ${trend.breakdown.Trend >= 0 ? "+" : ""}${trend.breakdown.Trend}
   Momentum:   ${trend.breakdown.Momentum >= 0 ? "+" : ""}${trend.breakdown.Momentum}
-  Price:      ${trend.breakdown["Price Action"] >= 0 ? "+" : ""}${trend.breakdown["Price Action"]}${news ? `\n  News:      ${newsBoost >= 0 ? "+" : ""}${newsBoost}` : ""}`;
+  Price:      ${trend.breakdown["Price Action"] >= 0 ? "+" : ""}${trend.breakdown["Price Action"]}${news ? `\n  News:      ${newsBoost >= 0 ? "+" : ""}${newsBoost}` : ""}${eventInfo.eventRisk !== "LOW" ? `\n  Event:     ${eventPenalty}` : ""}`;
 
   if (q.includes("comprehensive") || q.includes("full analysis")) {
     return `[${symbol}] FULL ANALYSIS
@@ -152,6 +310,7 @@ Score: ${finalScore}/100 ${renderScoreBar(finalScore)}
 Price: $${price.toFixed(2)} (${isPositive ? "+" : ""}${changePercent.toFixed(2)}%)
 RSI: ${rsi} | MACD: ${macd > 0 ? "Bullish" : "Bearish"} | Trend: ${smaSignal}
 ${category === "forex" || category === "crypto" ? "Can short" : "No short selling"}
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -181,15 +340,21 @@ Disclaimer: Not financial advice.`;
       const rr1 = (reward1 / risk).toFixed(1);
       const rr2 = (reward2 / risk).toFixed(1);
 
-      const adjustedConfidence = Math.min(95, Math.max(20, 60 + Math.abs(finalScore) * 0.3 + (news && news.sentimentScore < 0 ? 10 : 0)));
-      const verdict = finalScore < -40 ? "STRONG SELL" : finalScore < -15 ? "SELL ON RALLY" : "WAIT FOR BOUNCE";
-      const reason = finalScore < -40 ? "Bearish trend + negative news" : finalScore < -15 ? "Bearish bias — sell rallies" : "Mixed signals — wait for clarity";
+      const adjustedConfidence = Math.min(95, Math.max(15, 60 + Math.abs(finalScore) * 0.3 + (news && news.sentimentScore < 0 ? 10 : 0) - (eventInfo.eventRisk === "HIGH" ? 20 : eventInfo.eventRisk === "MEDIUM" ? 10 : 0)));
+      let verdict = finalScore < -40 ? "STRONG SELL" : finalScore < -15 ? "SELL ON RALLY" : "WAIT FOR BOUNCE";
+      let reason = finalScore < -40 ? "Bearish trend + negative news" : finalScore < -15 ? "Bearish bias — sell rallies" : "Mixed signals — wait for clarity";
+
+      if (eventInfo.eventRisk === "HIGH") {
+        verdict = "WAIT — HIGH VOLATILITY EVENT";
+        reason = `${eventInfo.warnings[0] || "Major event approaching"}. ${eventInfo.advice}`;
+      }
 
       return `[${symbol}] SELL / SHORT
 ━━━━━━━━━━━━━━━━━━━━━━━
 Price: $${price.toFixed(2)}
 Verdict: ${verdict}
 Confidence: ${adjustedConfidence.toFixed(0)}%
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -216,7 +381,8 @@ Disclaimer: Not financial advice.`;
     return `[${symbol}] SELL (IDX)
 ━━━━━━━━━━━━━━━━━━━━━━━
 Price: Rp${price.toFixed(0)}
-Verdict: ${finalScore < -30 ? "SELL NOW" : "HOLD"}
+Verdict: ${eventInfo.eventRisk === "HIGH" ? "WAIT — EVENT RISK" : finalScore < -30 ? "SELL NOW" : "HOLD"}
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -247,15 +413,21 @@ Disclaimer: Not financial advice.`;
       const rr1 = (reward1 / risk).toFixed(1);
       const rr2 = (reward2 / risk).toFixed(1);
 
-      const adjustedConfidence = Math.min(95, Math.max(20, 60 + Math.abs(finalScore) * 0.3 + (news && news.sentimentScore > 0 ? 10 : 0)));
-      const verdict = finalScore > 40 ? "STRONG BUY" : finalScore > 15 ? "BUY ON DIP" : "WAIT FOR BETTER ENTRY";
-      const reason = finalScore > 40 ? "Bullish trend + positive news" : finalScore > 15 ? "Bullish bias — buy dips" : "Mixed signals — wait for clarity";
+      const adjustedConfidence = Math.min(95, Math.max(15, 60 + Math.abs(finalScore) * 0.3 + (news && news.sentimentScore > 0 ? 10 : 0) - (eventInfo.eventRisk === "HIGH" ? 20 : eventInfo.eventRisk === "MEDIUM" ? 10 : 0)));
+      let verdict = finalScore > 40 ? "STRONG BUY" : finalScore > 15 ? "BUY ON DIP" : "WAIT FOR BETTER ENTRY";
+      let reason = finalScore > 40 ? "Bullish trend + positive news" : finalScore > 15 ? "Bullish bias — buy dips" : "Mixed signals — wait for clarity";
+
+      if (eventInfo.eventRisk === "HIGH") {
+        verdict = "WAIT — HIGH VOLATILITY EVENT";
+        reason = `${eventInfo.warnings[0] || "Major event approaching"}. ${eventInfo.advice}`;
+      }
 
       return `[${symbol}] BUY / LONG
 ━━━━━━━━━━━━━━━━━━━━━━━
 Price: $${price.toFixed(2)}
 Verdict: ${verdict}
 Confidence: ${adjustedConfidence.toFixed(0)}%
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -290,7 +462,8 @@ Disclaimer: Not financial advice.`;
     return `[${symbol}] BUY (IDX)
 ━━━━━━━━━━━━━━━━━━━━━━━
 Price: Rp${price.toFixed(0)}
-Verdict: ${finalScore > 30 ? "STRONG BUY" : finalScore > 10 ? "BUY ON DIP" : "WAIT"}
+Verdict: ${eventInfo.eventRisk === "HIGH" ? "WAIT — EVENT RISK" : finalScore > 30 ? "STRONG BUY" : finalScore > 10 ? "BUY ON DIP" : "WAIT"}
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -318,6 +491,7 @@ Price: $${price.toFixed(2)}
 Risk Level: ${risk}
 Max Size: ${risk === "HIGH" ? "0.5%" : risk === "MEDIUM" ? "1%" : "2%"} per trade
 Stop Loss: $${(price * 0.98).toFixed(2)}
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -328,6 +502,7 @@ Disclaimer: Not financial advice.`;
   return `[${symbol}] QUICK LOOK
 ━━━━━━━━━━━━━━━━━━━━━━━
 Price: $${price.toFixed(2)} (${isPositive ? "+" : ""}${changePercent.toFixed(2)}%)
+${eventSection}
 ${trendSection}
 ${newsSection}
 
@@ -339,16 +514,18 @@ export async function POST(request: Request) {
   const { instrumentData, indicators, question } = await request.json();
 
   const news = await fetchNews(instrumentData.symbol, instrumentData.category);
+  const eventInfo = checkEventProximity(instrumentData.symbol, instrumentData.category);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
-    const analysis = generateLocalAnalysis(instrumentData, indicators, question, news);
+    const analysis = generateLocalAnalysis(instrumentData, indicators, question, news, eventInfo);
     return NextResponse.json({ analysis });
   }
 
   const trend = calculateTrendScore(indicators, instrumentData.changePercent, instrumentData.volume);
   const newsContext = news ? `\nNews Sentiment: ${news.sentiment}\nHeadlines:\n${news.headlines.map((h: string) => `- ${h}`).join("\n")}` : "";
+  const eventContext = eventInfo.warnings.length > 0 ? `\n⚠️ ECONOMIC EVENTS:\n${eventInfo.warnings.join("\n")}\nAdvice: ${eventInfo.advice}` : "";
 
   const context = `
 Instrument: ${instrumentData.symbol} (${instrumentData.name})
@@ -359,6 +536,7 @@ Change: ${instrumentData.change?.toFixed(4)} (${instrumentData.changePercent?.to
 Trend Score: ${trend.score}/100 (${trend.label})
 Breakdown: RSI=${trend.breakdown.RSI}, MACD=${trend.breakdown.MACD}, Trend=${trend.breakdown.Trend}, Momentum=${trend.breakdown.Momentum}, Price=${trend.breakdown["Price Action"]}
 ${newsContext}
+${eventContext}
 
 Indicators:
 - RSI: ${indicators.rsi}
@@ -367,9 +545,9 @@ Indicators:
 - Signal: ${indicators.smaSignal}
 `;
 
-  const systemPrompt = `You are an expert trading analyst. Use the Trend Score and News Sentiment provided to give a clear market bias (bullish/bearish/neutral). Include the score breakdown in your analysis. ${instrumentData.category === "forex" ? "Forex trades 24/5." : instrumentData.category === "crypto" ? "Crypto trades 24/7." : "Check commodity hours."} Always include disclaimer.`;
+  const systemPrompt = `You are an expert trading analyst. Use the Trend Score, News Sentiment, and Economic Calendar events provided to give a clear market bias (bullish/bearish/neutral). Include the score breakdown in your analysis. If there are upcoming economic events, factor them into your advice — warn the user about volatility and suggest position sizing adjustments. ${instrumentData.category === "forex" ? "Forex trades 24/5." : instrumentData.category === "crypto" ? "Crypto trades 24/7." : "Check commodity hours."} Always include disclaimer.`;
 
-  const userMessage = `Analyze:\n\n${context}\n\nQuestion: ${question || "Provide comprehensive analysis with trend score."}`;
+  const userMessage = `Analyze:\n\n${context}\n\nQuestion: ${question || "Provide comprehensive analysis with trend score and event warnings."}`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -381,7 +559,7 @@ Indicators:
     const data = await response.json();
     return NextResponse.json({ analysis: data.content?.[0]?.text || "No analysis." });
   } catch {
-    const analysis = generateLocalAnalysis(instrumentData, indicators, question, news);
+    const analysis = generateLocalAnalysis(instrumentData, indicators, question, news, eventInfo);
     return NextResponse.json({ analysis });
   }
 }
