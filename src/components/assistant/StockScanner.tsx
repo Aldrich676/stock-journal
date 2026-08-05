@@ -98,7 +98,7 @@ export default function StockScanner({ onSelectStock }: Props) {
       {loading && !data && (
         <div className="flex items-center gap-3 text-[var(--muted)] py-8">
           <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Scanning {data?.scanned || "100+"} IDX stocks...</span>
+          <span className="text-sm">Scanning IDX stocks...</span>
         </div>
       )}
 
