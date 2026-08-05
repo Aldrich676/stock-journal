@@ -4,6 +4,7 @@ import { useState } from "react";
 import StockSearch from "@/components/assistant/StockSearch";
 import StockQuote from "@/components/assistant/StockQuote";
 import AIAnalysis from "@/components/assistant/AIAnalysis";
+import StockScanner from "@/components/assistant/StockScanner";
 
 interface StockData {
   symbol: string;
@@ -56,6 +57,10 @@ export default function StocksAssistantPage() {
       <div className="animate-fade-in">
         <h1 className="text-3xl sm:text-4xl font-bold mb-2">Indonesian Stocks</h1>
         <p className="text-[var(--muted)] text-base sm:text-lg">AI-powered analysis for IDX/BEI stocks</p>
+      </div>
+
+      <div className="animate-fade-in-delay">
+        <StockScanner onSelectStock={handleSelectStock} />
       </div>
 
       <div className="animate-fade-in-delay">
