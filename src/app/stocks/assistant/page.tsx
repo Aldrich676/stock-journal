@@ -33,23 +33,37 @@ interface StockData {
 export default function StocksAssistantPage() {
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [lastUpdate, setLastUpdate] = useState("");
 
-  const handleSelectStock = async (symbol: string) => {
-    setSelectedStock(symbol);
-    setLoading(true);
+  const fetchStock = async (symbol: string, isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     setError("");
-    setStockData(null);
     try {
       const res = await fetch(`/api/stock?symbol=${symbol}`);
       const data = await res.json();
       if (data.error) setError(data.error);
-      else setStockData(data);
+      else {
+        setStockData(data);
+        setLastUpdate(new Date().toLocaleTimeString());
+      }
     } catch {
       setError("Failed to fetch stock data. Please try again.");
     }
     setLoading(false);
+    setRefreshing(false);
+  };
+
+  const handleSelectStock = async (symbol: string) => {
+    setSelectedStock(symbol);
+    await fetchStock(symbol);
+  };
+
+  const handleRefresh = async () => {
+    if (selectedStock) await fetchStock(selectedStock, true);
   };
 
   return (
@@ -74,7 +88,7 @@ export default function StocksAssistantPage() {
       )}
 
       <div className="animate-fade-in-delay">
-        <StockQuote data={stockData} loading={loading} />
+        <StockQuote data={stockData} loading={loading} onRefresh={handleRefresh} refreshing={refreshing} lastUpdate={lastUpdate} />
       </div>
 
       <div className="animate-fade-in-delay-2">

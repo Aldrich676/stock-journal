@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
+
 interface StockData {
   symbol: string;
   name: string;
@@ -27,9 +29,26 @@ interface StockData {
 interface Props {
   data: StockData | null;
   loading: boolean;
+  onRefresh: () => void;
+  refreshing: boolean;
+  lastUpdate: string;
 }
 
-export default function StockQuote({ data, loading }: Props) {
+export default function StockQuote({ data, loading, onRefresh, refreshing, lastUpdate }: Props) {
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (autoRefresh && data) {
+      intervalRef.current = setInterval(() => {
+        onRefresh();
+      }, 10000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [autoRefresh, data, onRefresh]);
+
   if (loading) {
     return (
       <div className="p-4 sm:p-6 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]">
@@ -64,7 +83,36 @@ export default function StockQuote({ data, loading }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-6">
+        <div className="flex items-center justify-between mt-4 pt-3 border-t border-[var(--card-border)]">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all disabled:opacity-50"
+            >
+              <svg className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+            <button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                autoRefresh
+                  ? "border-green-500/50 bg-green-500/10 text-green-400"
+                  : "border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--accent)]"
+              }`}
+            >
+              <div className={`w-2 h-2 rounded-full ${autoRefresh ? "bg-green-400 animate-pulse" : "bg-[var(--muted)]"}`} />
+              {autoRefresh ? "Live" : "Auto"}
+            </button>
+          </div>
+          {lastUpdate && (
+            <span className="text-[10px] text-[var(--muted)]">Updated: {lastUpdate}</span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-4">
           <div className="p-3 rounded-xl bg-[var(--background)]">
             <div className="text-[10px] sm:text-xs text-[var(--muted)] mb-1">Day High</div>
             <div className="font-mono font-semibold text-sm sm:text-base">Rp{data.dayHigh?.toLocaleString()}</div>
